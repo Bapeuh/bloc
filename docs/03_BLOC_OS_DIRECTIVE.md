@@ -2,664 +2,463 @@
 
 ## 0. Objet
 
-Ce document synthétise l'exploration conceptuelle de BLOC appliquée à la construction d'un système d'exploitation.
+Ce document synthétise l'exploration conceptuelle de BLOC appliquée à un système d'exploitation.
 
-Il ne constitue pas encore une spécification d'implémentation. Il définit une direction et des hypothèses à éprouver.
+Il ne constitue pas une spécification finale. Il définit une direction, des invariants souhaités et des hypothèses à éprouver.
 
-L'objectif est volontairement radical :
+Une correction majeure est désormais assumée :
 
-> **Imaginer BLOC OS avant de demander comment Linux pourrait l'implémenter.**
+> **Le cœur intellectuel de BLOC est une ontologie minimale ; le cœur opérationnel de BLOC OS est la BLOC Machine qui doit réellement la garantir.**
 
-Linux, Docker, un hyperviseur ou un environnement utilisateur pourront servir de banc d'essai. Ils ne doivent pas dicter l'ontologie du système.
+La machine doit donc être spécifiée et évaluée avec autant de rigueur que l'ontologie.
 
 ---
 
-# 1. Point de départ
+# 1. Couches à distinguer
 
-Un système classique expose comme catégories fondamentales :
+~~~text
+UNIVERS BLOC
+Blocs, relations, causalité, structures interprétables
+        │
+        ▼
+RULE ENGINE
+langage de motifs + production de transformations
+        │
+        ▼
+BLOC MACHINE
+runtime de confiance : atomicité, protection, médiation,
+identités, stockage logique, interaction avec le substrat
+        │
+        ▼
+SUBSTRAT D'EXÉCUTION
+CPU, MMU, interruptions, timers, mémoire physique, pilotes,
+ordonnancement bas niveau, primitives d'I/O
+~~~
 
-```text
-fichiers
-répertoires
-processus
-threads
-utilisateurs
-permissions
-sockets
-services
-applications
-périphériques
-```
+Le Seed est un graphe initial chargé par la Machine. Il n'est ni une couche matérielle ni une primitive fondamentale.
 
-BLOC OS cherche à ne présumer aucune de ces catégories.
+Le Trust Anchor est séparé du Seed : il fonde certaines garanties non forgeables.
 
-Le cœur conceptuel part de :
-
-```text
-IDENTITÉS
-+
-RELATIONS
-```
-
-et tente de faire émerger le reste.
-
-Le critère de réussite n'est pas d'avoir moins de code à tout prix. Il est de trouver **le minimum ontologique nécessaire**.
-
-# 2. Atome fondamental
+# 2. Ontologie minimale
 
 Hypothèse de travail :
 
 > **Un Bloc fondamental est une identité sans contenu intrinsèque.**
 
-Ne pas modéliser primitivement :
+Valeur, type, rôle, propriété et sens doivent émerger de structures relationnelles et de leur interprétation.
 
-```text
-Bloc {
-    id
-    type
-    value
-    properties
-}
-```
+Cela définit le modèle logique. Cela ne dit pas encore comment la machine le garantit efficacement.
 
-mais tendre conceptuellement vers :
+# 3. MATCH → PRODUCE devient une abstraction à spécifier
 
-```text
-Bloc = identité
-```
+La formule reste utile :
 
-Valeur, type, propriété et contenu doivent être représentés par des structures relationnelles et interprétés par des lentilles.
+~~~text
+MATCH → PRODUCE
+~~~
 
-# 3. Relations
+mais elle ne doit plus être comprise comme « rechercher n'importe quel sous-graphe arbitraire dans tout l'univers ».
 
-Une relation sémantique doit pouvoir être un Bloc.
+Le Rule Engine devra utiliser un langage de motifs explicitement restreint.
 
-Le Core ne doit pas connaître nativement des relations métier telles que `possède`, `contient`, `source` ou `destination`.
+Candidats à imposer :
 
-L'orientation, les rôles et l'ordre doivent autant que possible émerger de structures.
+- motifs ancrés ;
+- voisinage local ;
+- profondeur bornée ;
+- relations indexables ;
+- variables limitées ;
+- prédicats positifs par défaut ;
+- coût estimable ;
+- budget d'exécution ;
+- règles de terminaison définies.
 
-Ce principe permet de représenter valeurs, relations orientées, séquences, transformations et règles sans multiplier les primitives.
+Le langage exact reste à spécifier dans 04_BLOC_MACHINE_SPEC.md.
 
-# 4. Exécution
+# 4. Redéclenchement et idempotence
 
-Un graphe statique peut représenter beaucoup de choses, mais il ne vit pas.
+Dans un univers append-only, un motif positif peut rester vrai indéfiniment.
 
-La candidate minimale d'exécution est :
+Une règle naïve :
 
-> **MATCH → PRODUCE**
+~~~text
+MATCH A
+→ PRODUCE B
+~~~
 
-```text
-structure existante
-       ↓
-      MATCH
-       ↓
-règle applicable
-       ↓
-     PRODUCE
-       ↓
-nouveaux Blocs + nouveaux liens
-```
+peut donc se déclencher sans fin.
 
-L'exécution devient :
+Une piste à formaliser consiste à donner à chaque application logique une identité déterministe :
 
-> **un graphe qui produit du graphe.**
+~~~text
+ApplicationID = F(Règle, Match canonique)
+~~~
 
-Code, données, règles et historique restent alors représentables dans la même ontologie.
+Deux tentatives portant sur la même application logique convergeraient vers la même identité.
 
-# 5. BLOC Machine
+Cela peut fournir une idempotence logique, mais ne supprime pas les besoins physiques d'atomicité, de déduplication ou de coordination.
 
-La couche physique minimale est provisoirement appelée **BLOC Machine**.
+Aucune solution n'est encore considérée comme acquise.
 
-Hypothèse actuelle :
+# 5. Monotonicité et coordination
 
-```text
-BLOC MACHINE 0
+BLOC ne doit plus être présenté comme pouvant éviter toute coordination.
 
-substrat :
-    identité
-    lien
+Les calculs purement monotones peuvent souvent progresser sans coordination globale.
 
-capacités :
-    créer
-    relier
-    observer
+En revanche, des opérations telles que :
 
-mécanisme :
-    MATCH → PRODUCE
+- débit sur un solde limité ;
+- allocation unique ;
+- réservation exclusive ;
+- révocation ;
+- consommation unique ;
+- test d'absence ;
+- invariant global ;
 
-frontière physique :
-    SENSE / ACTUATE
-```
+peuvent exiger ordre, sérialisation, consensus ou autorité unique.
 
-La différence entre primitive ontologique et capacité d'implémentation doit rester explicite.
+Principe retenu :
 
-# 6. Évolution et histoire
+> **BLOC cherche à rendre la coordination explicite et locale aux invariants qui l'exigent, pas à la supprimer universellement.**
 
-BLOC privilégie une évolution où une transformation ne réécrit pas silencieusement le passé.
+# 6. Conflits
 
-```text
-A
-│
-├── transformation T1 → B
-└── transformation T2 → C
-```
+Le graphe peut représenter plusieurs branches concurrentes :
 
-A, B, C et les transformations peuvent coexister.
-
-L'état courant devient une interprétation du graphe causal.
-
-Conséquences :
-
-- historique natif ;
-- provenance native ;
-- versions émergentes ;
-- branches représentables ;
-- résolution explicite des conflits.
-
-Cela ne signifie pas que chaque octet doit être conservé éternellement.
-
-# 7. Temps et concurrence
-
-Le temps logique fondamental est causal.
-
-```text
-A
-├── E1 → B ─┐
-└── E2 → C ─┴→ E3
-```
-
-E1 et E2 n'ont pas besoin d'un ordre logique total.
-
-Le matériel peut les exécuter séquentiellement sans imposer cet ordre au modèle.
-
-> **La concurrence émerge de l'absence de dépendance causale.**
-
-Le temps chronologique est une observation supplémentaire fournie par une horloge.
-
-# 8. Conflits
-
-BLOC doit d'abord pouvoir représenter :
-
-```text
+~~~text
     A
    / \
   B   C
-```
+~~~
 
-puis éventuellement :
+Cela reste une propriété importante.
 
-```text
-B + C → D
-```
+Mais :
 
-La résolution est une nouvelle transformation.
+> **représenter un conflit n'est pas résoudre un invariant.**
 
-> **BLOC doit pouvoir représenter un conflit avant de chercher à le résoudre.**
+Pour des données purement logiques, plusieurs branches peuvent coexister.
 
-# 9. Ressources physiques
+Pour un effet externe ou une ressource exclusive, la Machine ou une autorité supérieure doit parfois empêcher certaines branches avant qu'elles ne deviennent des effets réels.
 
-Séparation fondamentale :
+# 7. Temps, concurrence et ordre physique
 
-```text
+La causalité reste plus fondamentale que l'ordre chronologique global dans le modèle logique.
+
+Cependant la Machine doit posséder un ordre physique suffisant pour :
+
+- garantir certaines sections atomiques ;
+- arbitrer des accès concurrents ;
+- protéger des invariants ;
+- interagir avec le matériel.
+
+Le modèle ne doit donc pas confondre ordre logique causal et ordre physique nécessaire à l'exécution.
+
+# 8. SENSE et ACTUATE
+
+SENSE et ACTUATE sont des interfaces de frontière, pas des axiomes ontologiques.
+
+## SENSE
+
+Transforme ou associe une observation du monde externe à une structure BLOC.
+
+Une observation externe peut être non reproductible.
+
+## ACTUATE
+
+Ne doit plus être défini comme « une structure provoque un effet ».
+
+La chaîne correcte est au minimum :
+
+~~~text
+Intention
+   ↓
+Médiation / autorisation
+   ↓
+Tentative d'effet
+   ↓
+Monde physique
+   ↓
+Observation de résultat
+~~~
+
+Résultats possibles :
+
+~~~text
+confirmé
+échoué
+inconnu
+~~~
+
+Le cas inconnu est essentiel en présence de pannes ou de réseau.
+
+# 9. Exactly-once n'est pas une garantie fondamentale
+
+BLOC ne promet pas un effet physique exactement une fois par magie.
+
+Selon le domaine, il pourra être nécessaire d'utiliser :
+
+- identifiant d'opération ;
+- opération idempotente ;
+- déduplication ;
+- journal d'intention ;
+- accusé de réception ;
+- protocole transactionnel ;
+- compensation ;
+- autorité de sérialisation.
+
+La stratégie appartient au protocole ou à une couche de service, sauf si l'expérience démontre qu'une garantie plus forte doit entrer dans la Machine.
+
+# 10. Fast paths hors graphe
+
+Tout ce qui existe dans le système n'a pas besoin d'être exécuté via le Rule Engine.
+
+Des chemins bas niveau peuvent rester hors du graphe :
+
+- interruptions ;
+- MMU / défauts mémoire ;
+- scheduling CPU bas niveau ;
+- watchdogs ;
+- certaines opérations temps réel ;
+- primitives d'isolation ;
+- gestion immédiate de certains périphériques.
+
+Ces événements peuvent ensuite être observés ou projetés dans BLOC si nécessaire.
+
+Principe :
+
+> **Tout peut être représenté en BLOC sans que toute opération physique doive être exécutée par transformation du graphe.**
+
+# 11. Sécurité et Médiateur d'accès
+
+La confidentialité doit être appliquée avant observation.
+
+Un composant de confiance est donc explicitement reconnu :
+
+> **Médiateur d'accès**
+
+Il intervient avant qu'une structure protégée soit rendue visible ou qu'une action privilégiée soit effectuée.
+
+Il peut évaluer :
+
+- identité ;
+- capacité d'autorité ;
+- contexte ;
+- provenance ;
+- statut de révocation ;
+- politique active.
+
+Les politiques peuvent être représentées dans BLOC.
+
+L'enforcement appartient à la Trusted Computing Base.
+
+# 12. Révocation
+
+L'append-only préserve l'historique des grants et révocations, mais ne résout pas automatiquement leur validité courante.
+
+Une autorisation doit être réévaluée lors de son usage.
+
+Le modèle de révocation reste à choisir parmi des approches comme :
+
+- epochs ;
+- version d'autorité ;
+- durée de validité ;
+- indirection ;
+- autorité de validation ;
+- autre structure dédiée.
+
+# 13. Mémoire et reconstructibilité
+
+Principe conservé :
+
+> **Il existe une mémoire logique ; RAM, SSD, cache, archive et réseau sont des stratégies de matérialisation.**
+
+Mais une structure n'est reconstructible que si :
+
+1. toutes ses dépendances nécessaires sont encore accessibles ;
+2. sa dérivation est pure ou suffisamment déterministe ;
+3. aucune observation externe indispensable n'a été perdue.
+
+Il faut distinguer dérivation pure et transformation dépendant de SENSE, du réseau, du temps ou du hasard.
+
+# 14. Oubli et contamination informationnelle
+
+Supprimer la source d'une information ne suffit pas si ses dérivés permettent de la reconstruire.
+
+L'oubli peut donc nécessiter :
+
+~~~text
+source
+↓
+analyse de provenance
+↓
+dérivés dépendants
+↓
+effacement / invalidation / reclassification
+~~~
+
+La provenance devient simultanément :
+
+- outil d'audit ;
+- outil de reconstruction ;
+- outil de suivi de contamination ;
+- possible source de fuite.
+
+Elle doit elle-même être soumise au contrôle d'accès.
+
+# 15. Ressources et politique
+
+La séparation reste :
+
+~~~text
 POLITIQUE
     ↓
 Univers BLOC
 
-MÉCANISME / CONTRAINTE
+ENFORCEMENT / MÉCANISME
     ↓
-BLOC Machine + hardware
-```
+BLOC Machine + substrat
+~~~
 
-Les décisions de priorité, équité, importance ou économie d'énergie doivent autant que possible être exprimées dans BLOC.
+Mais certaines garanties de sécurité, d'atomicité et d'isolation appartiennent nécessairement à la Machine.
 
-La machine impose uniquement les contraintes réellement physiques et l'isolation nécessaire.
+# 16. Fichiers, processus, applications
 
-# 10. SENSE et ACTUATE
+Les conclusions précédentes restent valables comme hypothèses d'émergence :
 
-```text
-        MONDE PHYSIQUE
-          ↑       │
-          │       ↓
-      ACTUATE    SENSE
-          │       │
-          └───┬───┘
-              │
-        UNIVERS BLOC
-```
+- fichier = interprétation stable d'un sous-graphe ;
+- chemin = manière d'atteindre une identité ;
+- processus = agent + contexte + droits + exécution ;
+- application = lentilles + vues + règles + contexte ;
+- message = structure rendue observable dans un autre contexte ;
+- socket = mécanisme de transport physique exposant une abstraction de communication.
 
-**SENSE** : une réalité physique produit une observation BLOC.
+Ces abstractions restent au-dessus de la Machine tant qu'aucune nécessité expérimentale ne force leur descente.
 
-**ACTUATE** : une structure BLOC autorisée provoque un effet physique.
+# 17. Boot
 
-Cela généralise clavier, souris, caméra, réseau, stockage, GPU, écran, capteurs et actionneurs.
+Le boot reste un amorçage :
 
-Un driver devient conceptuellement un adaptateur entre protocole physique et structures BLOC.
-
-# 11. Sécurité
-
-Ne pas introduire immédiatement `USER`, `ROOT`, `ACL` ou `ROLE`.
-
-L'hypothèse est une sécurité fondée sur :
-
-```text
-IDENTITÉ
-CAPACITÉ
-PROVENANCE
-CONTEXTE
-```
-
-Une action doit pouvoir fournir une preuve structurelle qu'elle est admissible.
-
-Les capacités peuvent être accordées, déléguées, limitées ou révoquées.
-
-Une racine de confiance physique ou cryptographique sera néanmoins nécessaire pour empêcher qu'un agent forge lui-même son autorité.
-
-# 12. Processus émergent
-
-Un processus classique peut être réinterprété comme :
-
-> **un Bloc agent opérant dans un contexte limité par des capacités, produisant des transformations.**
-
-Ainsi, `PROCESS` n'est pas requis comme primitive ontologique.
-
-# 13. Mémoire
-
-> **Il n'existe qu'une mémoire logique : l'univers BLOC. Les types de mémoire classiques sont des stratégies de matérialisation.**
-
-Un Bloc logique peut être matérialisé en RAM, sur SSD, répliqué, distant, archivé ou absent physiquement mais reconstructible.
-
-Ne pas confondre :
-
-```text
-existence logique
-matérialisation physique
-disponibilité actuelle
-```
-
-# 14. Reconstructibilité et cache
-
-Si C est entièrement dérivable de A, B et d'une règle R :
-
-```text
-A + B + R → C
-```
-
-C n'a pas nécessairement besoin d'être conservé physiquement.
-
-Un cache devient :
-
-> **une matérialisation temporaire d'une structure qui peut être retrouvée ou reconstruite.**
-
-Swap, cache et archive deviennent des politiques de matérialisation.
-
-# 15. Identité et matérialisation
-
-Une identité logique peut posséder plusieurs matérialisations :
-
-```text
-          B42
-       /   |   \
-      P1   P2   P3
-     RAM  SSD  distant
-```
-
-La destruction de P1 ne détruit pas nécessairement B42.
-
-Cette distinction permet d'unifier réplication, cache, sauvegarde, stockage distant et rematérialisation.
-
-# 16. Oubli
-
-Le principe append-only doit être formulé précisément :
-
-> **Une transformation ne réécrit pas silencieusement l'histoire.**
-
-Un oubli explicite peut exister.
-
-Il peut conserver la trace qu'un oubli a eu lieu tout en rendant l'information antérieure non reconstructible.
-
-# 17. Fichiers, dossiers et chemins
-
-Un fichier n'est pas une primitive.
-
-> **Un fichier est une interprétation stable d'un sous-graphe.**
-
-Un dossier, une collection, un tag ou un workspace peuvent être différentes interprétations de relations contextuelles.
-
-> **Un chemin décrit une manière d'atteindre un Bloc ; il n'est pas son identité.**
-
-Un même objet peut être accessible par plusieurs parcours sans duplication logique.
-
-# 18. Formats
-
-Le format peut être une matérialisation ou une projection.
-
-```text
-Document logique
-    ├── projection PDF
-    ├── projection texte
-    └── autre matérialisation
-```
-
-Les représentations ne sont pas automatiquement équivalentes : BLOC doit pouvoir exprimer dérivation, projection, approximation ou perte d'information.
-
-Pour les objets binaires volumineux, l'implémentation peut utiliser des blobs compacts.
-
-# 19. Applications et exécutables
-
-Code et données ne sont pas ontologiquement séparés.
-
-Un programme peut être un sous-graphe de règles interprétables par le moteur.
-
-Une application peut émerger comme :
-
-```text
-lentilles
-+
-vues
-+
-règles
-+
-capacités
-+
-contexte
-```
-
-L'utilisateur n'est donc pas obligé de penser « ouvrir un fichier avec une application ».
-
-# 20. Compatibilité
-
-Les abstractions classiques peuvent être réintroduites comme lentilles de compatibilité :
-
-```text
-BLOC → POSIX lens → filesystem / interfaces attendues
-BLOC → SQL lens → tables
-BLOC → document lens → document
-BLOC → object-storage lens → objets
-```
-
-Cela permet d'utiliser des systèmes existants sans laisser leurs abstractions dicter celles du Core.
-
-# 21. Communication
-
-> **Communiquer, dans BLOC, consiste à modifier la causalité et/ou la visibilité d'une information entre contextes.**
-
-Localement, aucune copie n'est nécessaire si deux agents peuvent observer la même structure.
-
-Un message peut être une structure produite par A et observable par B.
-
-Un message traité n'est pas nécessairement supprimé : une nouvelle structure peut représenter son traitement.
-
-# 22. Abstractions de communication
-
-```text
-shared memory
-= plusieurs agents observent la même structure
-
-message
-= une structure devient observable par un destinataire
-
-RPC
-= demande + réponse causale
-
-event bus
-= plusieurs agents observent une même production
-
-pipe / stream
-= chaîne causale ordonnée de productions
-
-socket
-= transport physique de structures entre frontières
-```
-
-Une API devient une convention de motifs reconnus et produits.
-
-Un protocole peut lui-même être décrit dans BLOC.
-
-# 23. Distribution
-
-```text
-Univers A
-   ↓
-ACTUATE réseau
-════════════════
-SENSE réseau
-   ↓
-Univers B
-```
-
-Le transport physique ne doit pas changer l'identité logique si le système considère qu'il s'agit du même Bloc.
-
-Les branches concurrentes créées hors connexion peuvent coexister puis être fusionnées explicitement.
-
-# 24. Interface humain-machine
-
-Distinguer :
-
-```text
-SIGNAL
-  ↓
-OBSERVATION
-  ↓
-INTERPRÉTATION
-  ↓
-INTENTION
-  ↓
-TRANSFORMATION
-```
-
-Un clic physique n'est pas une intention.
-
-Une coordonnée n'acquiert un sens qu'avec une surface, une vue et un contexte.
-
-Clavier, tactile, voix ou IA sont différentes voies permettant de produire des intentions interprétables.
-
-# 25. Fenêtres, bureau, CLI et GUI
-
-Une fenêtre peut émerger comme une vue bornée sur un contexte.
-
-Un bureau peut émerger comme une organisation de vues.
-
-CLI, GUI, voix et interface conversationnelle peuvent être différentes lentilles d'interaction sur les mêmes opérations logiques.
-
-> **Le graphe est une lentille parmi d'autres.**
-
-# 26. Boot
-
-Le démarrage doit être pensé comme l'amorçage progressif d'un univers.
-
-```text
+~~~text
 POWER
- ↓
-Hardware
- ↓
+↓
+substrat
+↓
 BLOC Machine
- ↓
+↓
+Trust Anchor
+↓
 Seed
- ↓
-Univers minimal
- ↓
-découverte des capacités
- ↓
-expansion de l'univers
- ↓
-règles / politiques
- ↓
-contextes
- ↓
-interfaces
- ↓
-interaction
-```
-
-Le **Seed** est le premier sous-graphe dont la machine connaît la matérialisation au démarrage.
-
-Il doit être aussi petit que possible et fournir assez de conventions pour permettre à BLOC de construire des règles plus riches à l'intérieur de BLOC.
-
-# 27. Boot causal
-
-Les capacités peuvent émerger selon leurs dépendances :
-
-```text
-          Seed
-       /   |   \
- stockage GPU réseau
-     ↓      ↓
- règles   affichage
-       \   /
-       contexte
-```
-
-Le système n'a pas nécessairement un instant universel « boot terminé ».
-
-Il atteint progressivement des **états de capacité**.
-
-# 28. Cycle complet
-
-```text
-POWER
- ↓
-BLOC Machine
- ↓
-Seed
- ↓
-Univers minimal
- ↓
-capacités physiques
- ↓
-règles et politiques
- ↓
-contextes
- ↓
-lentilles et vues
- ↓
-interaction
- ↓
-transformations causales
- ↓
-mémoire / matérialisation
- ↓
-persistance
- ↓
-arrêt
- ↓
-nouvel amorçage
-```
-
-# 29. Constitution minimale de BLOC OS
-
-### Axiome 1 — Identité
-Le Bloc fondamental est une identité.
-
-### Axiome 2 — Relation
-La complexité émerge de relations entre identités.
-
-### Axiome 3 — Interprétation
-Type, contenu, sens et rôle ne sont pas intrinsèques ; ils émergent de l'interprétation.
-
-### Axiome 4 — Transformation explicite
-L'évolution produit de nouvelles structures causales au lieu de réécrire silencieusement l'histoire.
-
-### Axiome 5 — Exécution structurelle
-L'exécution minimale est recherchée sous la forme `MATCH → PRODUCE`.
-
-### Axiome 6 — Temps causal
-La causalité précède la chronologie globale.
-
-### Axiome 7 — Contexte
-Observation et action sont susceptibles d'être limitées par un contexte et des capacités.
-
-### Axiome 8 — Séparation logique / physique
-Une identité logique est distincte de ses matérialisations physiques.
-
-### Axiome 9 — Frontière physique
-Le monde extérieur rencontre BLOC par observation (`SENSE`) et matérialisation/action (`ACTUATE`).
-
-### Axiome 10 — Minimalité permanente
-Aucune abstraction ne doit entrer dans le cœur si elle peut émerger de la structure existante.
-
-# 30. Ce que le Core ne doit pas connaître a priori
-
-À ce stade, aucune nécessité conceptuelle n'a imposé comme primitive :
-
-```text
-FILE
-DIRECTORY
-PATH
-PROCESS
-THREAD
-USER
-ROOT
-ACL
-APP
-WINDOW
-DESKTOP
-MESSAGE
-SOCKET
-DATABASE
-TABLE
-CACHE
-SWAP
-CLOUD
-AI
-```
-
-Ces concepts peuvent être utiles ; ils doivent simplement être construits **au-dessus** tant que l'expérience ne démontre pas qu'ils sont fondamentaux.
-
-# 31. Questions critiques à tester
-
-1. Formaliser exactement le modèle minimal d'identité et de lien.
-2. Définir une convention bootstrap minimale pour `MATCH → PRODUCE`.
-3. Vérifier l'expressivité sur des exemples calculatoires non triviaux.
-4. Définir déterminisme, matches concurrents et garanties de convergence.
-5. Tester la sécurité par capacités et provenance.
-6. Définir l'identité distribuée et la réplication.
-7. Définir compaction, oubli et reconstruction.
-8. Mesurer le coût réel d'un prototype.
-9. Construire un Seed minimal.
-10. Faire émerger une première interface sans coder « fichier », « processus » ou « application » dans le Core.
-
-# 32. Règle de développement
-
-Chaque ajout au Core doit être accompagné de cette justification :
-
-> **Pourquoi ce mécanisme ne peut-il pas être représenté ou émerger avec les primitives déjà disponibles ?**
-
-L'absence de réponse convaincante signifie que le mécanisme doit rester au-dessus du Core.
-
-# 33. Direction d'expérimentation
-
-```text
-formalisation
 ↓
-simulateur BLOC Machine
+Rule Engine / règles initiales
 ↓
-Seed minimal
+univers élargi
 ↓
-moteur MATCH → PRODUCE
-↓
-graphe causal persistant
-↓
-lentilles
-↓
-agents / capacités
-↓
-interface expérimentale
-↓
-adaptateurs système existant
-↓
-prototype bootable
-```
+services et contextes
+~~~
 
-Une implémentation Linux ou Docker peut servir de laboratoire transportable.
+Mais certains mécanismes nécessaires au boot et à la sûreté peuvent exister hors graphe avant que le Seed soit utilisable.
 
-Le modèle théorique doit toutefois rester indépendant de Linux afin qu'un futur runtime natif ou bootable reste possible.
+# 18. Vocabulaire normalisé
 
-# 34. Formule directrice
+| Terme | Sens |
+|---|---|
+| Bloc | identité logique fondamentale |
+| Core Model | sémantique de l'univers BLOC |
+| Rule Engine | moteur du langage de règles |
+| BLOC Machine | runtime de confiance |
+| Seed | graphe initial |
+| Trust Anchor | racine de confiance |
+| Médiateur d'accès | enforcement avant observation/action |
+| Capacité d'autorité | droit/preuve non forgeable |
+| Condition de disponibilité | condition d'activation |
+| Ressource physique | ressource matérielle finie |
+| Matérialisation | représentation physique d'un objet logique |
+| Dérivation pure | calcul reproductible depuis dépendances explicites |
+| Observation externe | information issue du monde hors graphe |
 
-> **BLOC OS n'est pas un système où le noyau gère une liste d'objets informatiques prédéfinis.**
->
-> **C'est une machine minimale maintenant un univers d'identités et de relations, capable d'évoluer par transformations causales, tandis que fichiers, processus, applications, utilisateurs, interfaces et agents émergent comme interprétations de cet univers.**
+Le mot « capacité » seul doit être évité lorsqu'il peut être ambigu.
 
-Et la règle qui doit continuer à guider tout le projet reste :
+# 19. Constitution minimale révisée
+
+Les axiomes de BLOC OS doivent rester ontologiques :
+
+1. **Identité** — le Bloc fondamental est une identité.
+2. **Minimalité sémantique** — le Bloc n'a pas intrinsèquement type, contenu ou rôle.
+3. **Relation** — les structures émergent de relations.
+4. **Interprétation** — sens et type émergent du contexte.
+5. **Transformation explicite** — les évolutions ne réécrivent pas silencieusement l'histoire.
+6. **Causalité** — la dépendance causale prime sur un ordre total.
+7. **Multiplicité des interprétations** — une structure peut avoir plusieurs lectures.
+8. **Séparation logique / physique** — identité et matérialisation sont distinctes.
+
+Les éléments suivants ne sont plus appelés axiomes :
+
+- SENSE / ACTUATE : interfaces de frontière ;
+- minimalité permanente : règle de conception ;
+- matching : mécanisme du Rule Engine ;
+- contrôle d'accès : garantie de la Machine ;
+- Trust Anchor : mécanisme de sécurité.
+
+# 20. Ce que nous savons désormais ne pas pouvoir éluder
+
+La BLOC Machine devra probablement avoir une réponse explicite pour :
+
+- allocation et unicité des identités ;
+- stockage et accès aux liens ;
+- atomicité minimale ;
+- concurrence ;
+- restrictions du matching ;
+- idempotence des applications ;
+- gestion de l'absence / non-monotonicité ;
+- coordination lorsque nécessaire ;
+- médiation d'accès ;
+- révocation ;
+- isolation ;
+- fast paths hardware ;
+- SENSE ;
+- ACTUATE ;
+- résultat d'effet inconnu ;
+- horloge et timers physiques ;
+- Trust Anchor ;
+- persistance minimale ;
+- récupération après panne.
+
+Ce coût fait partie de BLOC.
+
+# 21. Questions critiques prioritaires
+
+La priorité n'est plus d'étendre l'OS vers de nouvelles abstractions.
+
+Elle est de spécifier la Machine :
+
+1. Quel est son état minimal ?
+2. Quelles opérations sont atomiques ?
+3. Comment une identité est-elle créée ?
+4. Qu'est-ce qu'un lien physiquement ?
+5. Quel langage exact de MATCH est autorisé ?
+6. Comment une application de règle est-elle identifiée ?
+7. Comment évite-t-on le redéclenchement infini ?
+8. Quelle négation est admise ?
+9. Quand la coordination devient-elle obligatoire ?
+10. Que garantit le Médiateur d'accès ?
+11. Comment fonctionne la révocation ?
+12. Quels chemins matériels restent hors graphe ?
+13. Quelle sémantique exacte possède ACTUATE ?
+14. Comment récupérer après crash ?
+15. Que garantit le Seed et que doit garantir la Machine avant lui ?
+
+Le document de travail correspondant est 04_BLOC_MACHINE_SPEC.md.
+
+# 22. Formule directrice révisée
+
+> **BLOC propose une ontologie minimale d'identités et de relations, mais reconnaît qu'une machine réelle doit payer explicitement le coût de l'exécution, de la sécurité, de l'atomicité, de la coordination et du monde physique.**
+
+Et la phrase fondatrice reste :
 
 > **Tout est Bloc. Le reste n'est qu'interprétation.**
+
+Avec une précision désormais essentielle :
+
+> **Tout peut être représenté comme Bloc ; tout n'a pas besoin d'être exécuté comme transformation de graphe.**
